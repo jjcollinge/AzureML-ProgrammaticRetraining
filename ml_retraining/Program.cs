@@ -48,7 +48,6 @@ namespace CallBatchExecutionService
         // Status code for the batch scoring job
         public BatchScoreStatusCode StatusCode { get; set; }
 
-
         // Locations for the potential multiple batch scoring outputs
         public IDictionary<string, AzureBlobDataReference> Results { get; set; }
 
@@ -58,11 +57,8 @@ namespace CallBatchExecutionService
 
     public class BatchExecutionRequest
     {
-
         public IDictionary<string, AzureBlobDataReference> Inputs { get; set; }
         public IDictionary<string, string> GlobalParameters { get; set; }
-
-        // Locations for the potential multiple batch scoring outputs
         public IDictionary<string, AzureBlobDataReference> Outputs { get; set; }
     }
 
@@ -88,9 +84,9 @@ namespace CallBatchExecutionService
 
         static async Task WriteFailedResponse(HttpResponseMessage response)
         {
-            Console.WriteLine(string.Format("The request failed with status code: {0}", response.StatusCode));
+            Console.WriteLine($"The request failed with status code: {response.StatusCode}");
 
-            // Print the headers - they include the requert ID and the timestamp, which are useful for debugging the failure
+            // Print the headers - they include the request ID and the timestamp, which are useful for debugging the failure
             Console.WriteLine(response.Headers.ToString());
 
             string responseContent = await response.Content.ReadAsStringAsync();
@@ -120,13 +116,17 @@ namespace CallBatchExecutionService
 
         static void ProcessResults(BatchScoreStatus status)
         {
-
             foreach (var output in status.Results)
             {
                 var blobLocation = output.Value;
-                Console.WriteLine(string.Format("The result '{0}' is available at the following Azure Storage location:\n", output.Key));
-                Console.WriteLine(string.Format("Download the new model's evaluation:\n {0}{1}{2}", blobLocation.BaseLocation, blobLocation.RelativeLocation, blobLocation.SasBlobToken));
-                Console.WriteLine();
+                Console.WriteLine($"The result '{output.Key}' is available at the following Azure Storage location");
+                Console.WriteLine($@"Download the new model's evaluation:\n
+                    {
+                        blobLocation.BaseLocation +
+                        blobLocation.RelativeLocation +
+                        blobLocation.SasBlobToken
+                    }
+                ");
             }
         }
 
@@ -139,17 +139,14 @@ namespace CallBatchExecutionService
             // 3. Call the Batch Execution Service to process the data in the blob. Any output is written to Azure blobs.
             // 4. Download the output blob, if any, to local file
 
-            const string BaseUrl = "https://europewest.services.azureml.net/workspaces/caa80bb3831f44da92e0cb29eca5f63a/services/a7d4ab93946d43eb96dda1534d29ab94/jobs";
-
             string StorageAccountName = _configuration["storageacc_name"];
             string StorageAccountKey = _configuration["storageacc_key"];
             string StorageContainerName = _configuration["storageacc_containername"];
-            string apiKey = _configuration["training_endpoint_key"];
 
             // set a time out for polling status
             const int TimeOutInMilliseconds = 120 * 1000; // Set a timeout of 2 minutes
 
-            string storageConnectionString = string.Format("DefaultEndpointsProtocol=https;AccountName={0};AccountKey={1}", StorageAccountName, StorageAccountKey);
+            string storageConnectionString = $"DefaultEndpointsProtocol=https;AccountName={StorageAccountName};AccountKey={StorageAccountKey}";
 
             UploadFileToBlob(_configuration["localfilepath"],
                "input1datablob.csv",
@@ -166,7 +163,7 @@ namespace CallBatchExecutionService
                             new AzureBlobDataReference()
                             {
                                 ConnectionString = storageConnectionString,
-                                RelativeLocation = string.Format("{0}/input1datablob.csv", StorageContainerName)
+                                RelativeLocation = $"{StorageContainerName}/input1datablob.csv"
                             }
                         },
                     },
@@ -178,7 +175,7 @@ namespace CallBatchExecutionService
                             new AzureBlobDataReference()
                             {
                                 ConnectionString = storageConnectionString,
-                                RelativeLocation = string.Format("/{0}/output1results.csv", StorageContainerName)
+                                RelativeLocation = $"/{StorageContainerName}/output1results.csv"
                             }
                         },
                         {
@@ -186,7 +183,7 @@ namespace CallBatchExecutionService
                             new AzureBlobDataReference()
                             {
                                 ConnectionString = storageConnectionString,
-                                RelativeLocation = string.Format("/{0}/output2results.ilearner", StorageContainerName)
+                                RelativeLocation = $"/{StorageContainerName}/output2results.ilearner"
                             }
                         },
                     },
@@ -194,6 +191,9 @@ namespace CallBatchExecutionService
                     {
                     }
                 };
+
+                string BaseUrl = _configuration["training_endpoint_uri"];
+                string apiKey = _configuration["training_endpoint_key"];
 
                 client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
 
@@ -203,7 +203,6 @@ namespace CallBatchExecutionService
                 //      result = await DoSomeTask()
                 // with the following:
                 //      result = await DoSomeTask().ConfigureAwait(false)
-
 
                 Console.WriteLine("Submitting the job...");
 
@@ -216,8 +215,7 @@ namespace CallBatchExecutionService
                 }
 
                 string jobId = await response.Content.ReadAsAsync<string>();
-                Console.WriteLine(string.Format("Job ID: {0}", jobId));
-
+                Console.WriteLine($"Job ID: {jobId}");
 
                 // start the job
                 Console.WriteLine("Starting the job...");
@@ -245,29 +243,29 @@ namespace CallBatchExecutionService
                     if (watch.ElapsedMilliseconds > TimeOutInMilliseconds)
                     {
                         done = true;
-                        Console.WriteLine(string.Format("Timed out. Deleting job {0} ...", jobId));
+                        Console.WriteLine($"Timed out. Deleting job {jobId} ...");
                         await client.DeleteAsync(jobLocation);
                     }
                     switch (status.StatusCode)
                     {
                         case BatchScoreStatusCode.NotStarted:
-                            Console.WriteLine(string.Format("Job {0} not yet started...", jobId));
+                            Console.WriteLine($"Job {jobId} not yet started...");
                             break;
                         case BatchScoreStatusCode.Running:
-                            Console.WriteLine(string.Format("Job {0} running...", jobId));
+                            Console.WriteLine($"Job {jobId} running...");
                             break;
                         case BatchScoreStatusCode.Failed:
-                            Console.WriteLine(string.Format("Job {0} failed!", jobId));
-                            Console.WriteLine(string.Format("Error details: {0}", status.Details));
+                            Console.WriteLine($"Job {jobId} failed!");
+                            Console.WriteLine($"Error details: {status.Details}");
                             done = true;
                             break;
                         case BatchScoreStatusCode.Cancelled:
-                            Console.WriteLine(string.Format("Job {0} cancelled!", jobId));
+                            Console.WriteLine($"Job {jobId} cancelled!");
                             done = true;
                             break;
                         case BatchScoreStatusCode.Finished:
                             done = true;
-                            Console.WriteLine(string.Format("Job {0} finished!", jobId));
+                            Console.WriteLine($"Job {jobId} finished!");
 
                             ProcessResults(status);
                             Console.WriteLine("Overwrite existing model? <y/n>");
@@ -302,8 +300,8 @@ namespace CallBatchExecutionService
                         Location = new AzureBlobDataReference()
                         {
                             BaseLocation = newModelBlobLocation.BaseLocation,
-                            RelativeLocation = newModelBlobLocation.RelativeLocation, //from the output, for example: “experimentoutput/8946abfd-79d6-4438-89a9-3e5d109183/8946abfd-79d6-4438-89a9-3e5d109183.ilearner”
-                            SasBlobToken = newModelBlobLocation.SasBlobToken //from the output, for example: “?sv=2013-08-15&sr=c&sig=37lTTfngRwxCcf94%3D&st=2015-01-30T22%3A53%3A06Z&se=2015-01-31T22%3A58%3A06Z&sp=rl”
+                            RelativeLocation = newModelBlobLocation.RelativeLocation,
+                            SasBlobToken = newModelBlobLocation.SasBlobToken
                         }
                     }
                 }
@@ -325,6 +323,7 @@ namespace CallBatchExecutionService
 
                     // Do what you want with a successful response here.
                     Console.WriteLine("Successfully updated the retraining endpoint model - Please wait 15 minutes for the service to fully migrate");
+                    Console.WriteLine("Press any key to finish");
                     Console.ReadLine();
                 }
             }
